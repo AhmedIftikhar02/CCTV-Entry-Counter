@@ -1,0 +1,22 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+
+# CCTV Video Files & Debug Outputs
+videos/
+*.mp4
+*.avi
+*.dav
+output_debug.mp4
+
+# YOLO Weights (auto-downloads when script runs)
+*.pt
+
+# System Files
+.DS_Store
+Thumbs.db

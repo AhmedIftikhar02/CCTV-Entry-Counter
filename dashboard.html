@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Footfall Analytics — CCTV Entry Monitoring Dashboard</title>
+
+  <!-- Inter Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          boxShadow: {
+            'card': '0 1px 2px 0 rgba(15, 23, 42, 0.04)',
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Chart.js & Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] font-sans antialiased selection:bg-slate-900 selection:text-white">
+
+  <!-- Non-intrusive Toast Notification (Replaces alert) -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-200">
+    <div class="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 shadow-lg">
+      <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+      <span id="toast-message">Report exported successfully.</span>
+    </div>
+  </div>
+
+  <!-- Top Executive Navigation Header -->
+  <header class="sticky top-0 z-30 border-b border-[#E2E8F0] bg-white/95 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+      <!-- Brand Identity -->
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0F172A] text-white">
+          <i data-lucide="scan-line" class="h-5 w-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2.5">
+            <h1 class="text-lg font-semibold tracking-tight text-[#0F172A]">Footfall Analytics</h1>
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-[#ECFDF5] px-2.5 py-0.5 text-xs font-medium text-[#059669]">
+              <span class="h-1.5 w-1.5 rounded-full bg-[#059669]"></span>
+              Entry-Only Active
+            </span>
+          </div>
+          <p class="text-xs text-[#64748B]">CCTV Entry Monitoring &amp; Store Traffic Intelligence</p>
+        </div>
+      </div>
+
+      <!-- Global Controls: Outlet Selector & Export CSV -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <div class="relative min-w-[230px] flex-1 sm:flex-initial">
+          <i data-lucide="store" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"></i>
+          <select id="outlet-select" aria-label="Select Outlet"
+            class="w-full appearance-none rounded-xl border border-[#E2E8F0] bg-white py-2.5 pl-9 pr-9 text-sm font-medium text-[#0F172A] shadow-card transition hover:border-slate-300 focus:border-[#0F172A] focus:outline-none">
+            <option value="all">All Outlets (2 Branches)</option>
+            <option value="Main Outlet (Gulistan-e-Johar)">Main Outlet (Gulistan-e-Johar)</option>
+            <option value="Outlet 02 (Tariq Road)">Outlet 02 (Tariq Road)</option>
+          </select>
+          <i data-lucide="chevron-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"></i>
+        </div>
+
+        <button id="export-csv-btn" type="button"
+          class="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#0F172A] shadow-card transition hover:bg-slate-50 active:scale-[0.99]">
+          <i data-lucide="download" class="h-4 w-4 text-[#64748B]"></i>
+          <span>Export CSV</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+
+    <!-- Filter Control Bar -->
+    <section class="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-card">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <!-- Quick Period Pills -->
+        <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Date Period Filter">
+          <button type="button" data-period="today" class="period-pill rounded-xl px-3.5 py-2 text-xs font-medium transition">Today</button>
+          <button type="button" data-period="yesterday" class="period-pill rounded-xl px-3.5 py-2 text-xs font-medium transition">Yesterday</button>
+          <button type="button" data-period="this_week" class="period-pill rounded-xl px-3.5 py-2 text-xs font-medium transition">This Week</button>
+          <button type="button" data-period="last_week" class="period-pill rounded-xl px-3.5 py-2 text-xs font-medium transition">Last Week</button>
+          <button type="button" data-period="this_month" class="period-pill rounded-xl px-3.5 py-2 text-xs font-medium transition">This Month</button>
+          <button type="button" data-period="custom" class="period-pill rounded-xl px-3.5 py-2 text-xs font-medium transition">Custom Range</button>
+        </div>
+
+        <!-- Time Slot (Hour) Filter -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="relative min-w-[245px] flex-1 sm:flex-initial">
+            <i data-lucide="clock" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"></i>
+            <select id="hour-select" aria-label="Filter by Hour Slot"
+              class="w-full appearance-none rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] py-2 pl-9 pr-9 text-xs font-medium text-[#0F172A] transition hover:border-slate-300 focus:border-[#0F172A] focus:bg-white focus:outline-none">
+              <option value="all">All Operating Hours (10 AM - 11 PM)</option>
+              <option value="10">10:00 AM - 11:00 AM</option>
+              <option value="11">11:00 AM - 12:00 PM</option>
+              <option value="12">12:00 PM - 01:00 PM</option>
+              <option value="13">01:00 PM - 02:00 PM</option>
+              <option value="14">02:00 PM - 03:00 PM</option>
+              <option value="15">03:00 PM - 04:00 PM</option>
+              <option value="16">04:00 PM - 05:00 PM</option>
+              <option value="17">05:00 PM - 06:00 PM</option>
+              <option value="18">06:00 PM - 07:00 PM</option>
+              <option value="19">07:00 PM - 08:00 PM</option>
+              <option value="20">08:00 PM - 09:00 PM</option>
+              <option value="21">09:00 PM - 10:00 PM</option>
+              <option value="22">10:00 PM - 11:00 PM</option>
+            </select>
+            <i data-lucide="chevron-down" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"></i>
+          </div>
+
+          <button id="reset-hour-btn" type="button" class="hidden items-center gap-1 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs font-medium text-[#64748B] hover:text-[#0F172A]">
+            <i data-lucide="x" class="h-3.5 w-3.5"></i>
+            <span>Clear Hour</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Date Range Drawer (Revealed when Custom Range pill is selected) -->
+      <div id="custom-date-bar" class="mt-4 hidden flex-wrap items-center justify-between gap-3 border-t border-[#E2E8F0] pt-3.5">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label for="start-date" class="text-xs font-medium text-[#64748B]">From</label>
+            <input id="start-date" type="date"
+              class="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1.5 text-xs font-medium text-[#0F172A] focus:border-[#0F172A] focus:bg-white focus:outline-none" />
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="end-date" class="text-xs font-medium text-[#64748B]">To</label>
+            <input id="end-date" type="date"
+              class="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1.5 text-xs font-medium text-[#0F172A] focus:border-[#0F172A] focus:bg-white focus:outline-none" />
+          </div>
+        </div>
+        <span id="active-range-label" class="text-xs text-[#64748B]">Showing custom date range</span>
+      </div>
+    </section>
+
+    <!-- 4 KPI Summary Cards -->
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <!-- KPI 1: Total Confirmed Entries -->
+      <div class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-[#64748B]">Total Confirmed Entries</span>
+          <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-[#0F172A]">
+            <i data-lucide="users" class="h-4 w-4"></i>
+          </div>
+        </div>
+        <div class="mt-3 flex items-baseline justify-between gap-2">
+          <p id="kpi-total-entries" class="text-3xl font-bold tracking-tight text-[#0F172A]">0</p>
+          <span id="kpi-delta-badge" class="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-xs font-medium text-[#059669]">
+            <i data-lucide="trending-up" class="h-3 w-3"></i>
+            <span id="kpi-delta-text">+14.2% vs yesterday</span>
+          </span>
+        </div>
+        <p id="kpi-period-caption" class="mt-2 text-xs text-[#64748B]">Exits excluded via directional line filter</p>
+      </div>
+
+      <!-- KPI 2: Peak Traffic Hour -->
+      <div class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-[#64748B]">Peak Traffic Hour</span>
+          <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-[#0F172A]">
+            <i data-lucide="flame" class="h-4 w-4"></i>
+          </div>
+        </div>
+        <div class="mt-3">
+          <p id="kpi-peak-hour" class="text-xl font-bold tracking-tight text-[#0F172A]">06:00 PM - 07:00 PM</p>
+          <p id="kpi-peak-count" class="mt-2 text-xs text-[#64748B]">0 entries recorded in peak window</p>
+        </div>
+      </div>
+
+      <!-- KPI 3: Average Entries / Hour -->
+      <div class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-[#64748B]">Average Entries / Hour</span>
+          <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-[#0F172A]">
+            <i data-lucide="activity" class="h-4 w-4"></i>
+          </div>
+        </div>
+        <div class="mt-3">
+          <p id="kpi-avg-hour" class="text-3xl font-bold tracking-tight text-[#0F172A]">0.0</p>
+          <p id="kpi-avg-caption" class="mt-2 text-xs text-[#64748B]">Across 13 active operating hours</p>
+        </div>
+      </div>
+
+      <!-- KPI 4: Processed CCTV Batches -->
+      <div class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-[#64748B]">Processed CCTV Batches</span>
+          <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-[#0F172A]">
+            <i data-lucide="video" class="h-4 w-4"></i>
+          </div>
+        </div>
+        <div class="mt-3 flex items-baseline justify-between gap-2">
+          <p id="kpi-batches-count" class="text-3xl font-bold tracking-tight text-[#0F172A]">0</p>
+          <span class="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-xs font-medium text-[#059669]">
+            Synced
+          </span>
+        </div>
+        <p id="kpi-batches-caption" class="mt-2 text-xs text-[#64748B]">30-min DVR clips verified</p>
+      </div>
+    </section>
+
+    <!-- Analytics Charts Grid (12-column responsive layout) -->
+    <section class="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <!-- Left Card (7 cols): Hourly Footfall Breakdown -->
+      <div class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card lg:col-span-7">
+        <div class="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-[#0F172A]">Hourly Footfall Breakdown</h2>
+            <p class="text-xs text-[#64748B]">Entries per 1-hour slot (Click any bar to isolate hour)</p>
+          </div>
+          <span id="bar-chart-badge" class="inline-flex w-fit items-center rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-[#0F172A]">
+            10:00 AM – 11:00 PM
+          </span>
+        </div>
+        <div class="relative h-72 w-full">
+          <canvas id="hourlyBarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Right Card (5 cols): Footfall Trend -->
+      <div class="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card lg:col-span-5">
+        <div class="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="trend-chart-title" class="text-sm font-semibold text-[#0F172A]">Cumulative Entry Progression</h2>
+            <p id="trend-chart-subtitle" class="text-xs text-[#64748B]">Running store entry count across operating hours</p>
+          </div>
+          <span id="trend-chart-badge" class="inline-flex w-fit items-center rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-[#64748B]">
+            Real-Time Curve
+          </span>
+        </div>
+        <div class="relative h-72 w-full">
+          <canvas id="trendLineChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Detailed Data Section with 3 Interactive Tabs -->
+    <section class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-card">
+      <!-- Tabs Header -->
+      <div class="flex flex-col gap-3 border-b border-[#E2E8F0] px-5 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex gap-6 overflow-x-auto" role="tablist">
+          <button type="button" data-tab="hourly"
+            class="data-tab border-b-2 border-[#0F172A] pb-3.5 text-sm font-semibold text-[#0F172A] whitespace-nowrap transition">
+            Hourly Summary
+          </button>
+          <button type="button" data-tab="videos"
+            class="data-tab border-b-2 border-transparent pb-3.5 text-sm font-medium text-[#64748B] hover:text-[#0F172A] whitespace-nowrap transition">
+            Processed CCTV Videos
+          </button>
+          <button type="button" data-tab="events"
+            class="data-tab border-b-2 border-transparent pb-3.5 text-sm font-medium text-[#64748B] hover:text-[#0F172A] whitespace-nowrap transition">
+            Live Entry Events Log
+          </button>
+        </div>
+
+        <div class="pb-3 sm:pb-3.5">
+          <span id="table-context-label" class="text-xs text-[#64748B]">Showing 13 operating slots</span>
+        </div>
+      </div>
+
+      <!-- TAB 1: Hourly Summary Table -->
+      <div id="tab-panel-hourly" class="overflow-x-auto">
+        <table class="w-full border-collapse text-left">
+          <thead>
+            <tr class="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+              <th class="px-5 py-3.5">Time Slot</th>
+              <th class="px-5 py-3.5">Confirmed Entries</th>
+              <th class="px-5 py-3.5">Traffic Share</th>
+              <th class="px-5 py-3.5">Traffic Status</th>
+              <th class="px-5 py-3.5 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="hourly-table-body" class="divide-y divide-[#E2E8F0] text-sm">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- TAB 2: Processed CCTV Videos (video_batches schema) -->
+      <div id="tab-panel-videos" class="hidden overflow-x-auto">
+        <table class="w-full border-collapse text-left">
+          <thead>
+            <tr class="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+              <th class="px-5 py-3.5">DVR File Name</th>
+              <th class="px-5 py-3.5">Outlet</th>
+              <th class="px-5 py-3.5">Recording Start</th>
+              <th class="px-5 py-3.5">Duration</th>
+              <th class="px-5 py-3.5">Counted Entries</th>
+              <th class="px-5 py-3.5 text-right">Batch Status</th>
+            </tr>
+          </thead>
+          <tbody id="videos-table-body" class="divide-y divide-[#E2E8F0] text-sm">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- TAB 3: Live Entry Events Log (entry_events schema) -->
+      <div id="tab-panel-events" class="hidden">
+        <div class="flex flex-col gap-2 border-b border-[#E2E8F0] bg-[#F8FAFC]/60 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-xs text-[#64748B]">Individual timestamped customer detections synced from <code class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">entry_events</code></p>
+          <span id="events-count-pill" class="text-xs font-medium text-[#0F172A]">Showing latest 15 events</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-left">
+            <thead>
+              <tr class="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+                <th class="px-5 py-3.5">Event ID</th>
+                <th class="px-5 py-3.5">Exact Entry Timestamp</th>
+                <th class="px-5 py-3.5">Outlet</th>
+                <th class="px-5 py-3.5">Track ID</th>
+                <th class="px-5 py-3.5 text-right">Video Offset</th>
+              </tr>
+            </thead>
+            <tbody id="events-table-body" class="divide-y divide-[#E2E8F0] text-sm">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. REALISTIC RETAIL STORE FOOTFALL DATASET (30 DAYS, 2 OUTLETS, 10AM-11PM)
+    // =========================================================================
+    const OPERATING_HOURS = [
+      { hour: 10, label: '10:00 AM - 11:00 AM', short: '10 AM' },
+      { hour: 11, label: '11:00 AM - 12:00 PM', short: '11 AM' },
+      { hour: 12, label: '12:00 PM - 01:00 PM', short: '12 PM' },
+      { hour: 13, label: '01:00 PM - 02:00 PM', short: '1 PM' },
+      { hour: 14, label: '02:00 PM - 03:00 PM', short: '2 PM' },
+      { hour: 15, label: '03:00 PM - 04:00 PM', short: '3 PM' },
+      { hour: 16, label: '04:00 PM - 05:00 PM', short: '4 PM' },
+      { hour: 17, label: '05:00 PM - 06:00 PM', short: '5 PM' },
+      { hour: 18, label: '06:00 PM - 07:00 PM', short: '6 PM' },
+      { hour: 19, label: '07:00 PM - 08:00 PM', short: '7 PM' },
+      { hour: 20, label: '08:00 PM - 09:00 PM', short: '8 PM' },
+      { hour: 21, label: '09:00 PM - 10:00 PM', short: '9 PM' },
+      { hour: 22, label: '10:00 PM - 11:00 PM', short: '10 PM' }
+    ];
+
+    const OUTLETS = [
+      'Main Outlet (Gulistan-e-Johar)',
+      'Outlet 02 (Tariq Road)'
+    ];
+
+    // Anchor "Today" to 2026-11-13
+    const TODAY_STR = '2026-11-13';
+
+    function formatDateISO(dateObj) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function parseDateISO(str) {
+      const [y, m, d] = str.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function formatDisplayDate(str) {
+      const d = parseDateISO(str);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatShortDay(str) {
+      const d = parseDateISO(str);
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    // Deterministic pseudo-random generator for consistent dummy data
+    function seededRandom(seed) {
+      let x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    }
+
+    // Generate 30 days of realistic retail footfall (Oct 15, 2026 -> Nov 13, 2026)
+    const DAILY_RECORDS = [];
+    const VIDEO_BATCHES = [];
+    const ENTRY_EVENTS = [];
+
+    const baseHourlyCurves = {
+      'Main Outlet (Gulistan-e-Johar)': [3, 5, 8, 10, 9, 11, 14, 19, 27, 32, 26, 17, 8],
+      'Outlet 02 (Tariq Road)':          [2, 4, 7,  9, 8, 10, 13, 16, 23, 28, 22, 14, 6]
+    };
+
+    const anchorDate = parseDateISO(TODAY_STR);
+    let eventAutoId = 10420;
+
+    for (let offsetDays = 29; offsetDays >= 0; offsetDays--) {
+      const current = new Date(anchorDate);
+      current.setDate(anchorDate.getDate() - offsetDays);
+      const dateStr = formatDateISO(current);
+      const dayOfWeek = current.getDay(); // 0=Sun, 5=Fri, 6=Sat
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6);
+      const weekendMult = isWeekend ? 1.24 : 0.94;
+
+      OUTLETS.forEach((outlet, oIdx) => {
+        const curve = baseHourlyCurves[outlet];
+        const hourlyMap = {};
+
+        OPERATING_HOURS.forEach((slot, hIdx) => {
+          const seed = (offsetDays + 1) * 97 + (oIdx + 1) * 31 + slot.hour * 13;
+          const jitter = 0.8 + seededRandom(seed) * 0.42;
+          let count = Math.max(1, Math.round(curve[hIdx] * weekendMult * jitter));
+
+          // Make Today (Nov 13) & Yesterday (Nov 12) realistic with clear evening peak & specific 5PM slot
+          if (dateStr === '2026-11-13' && outlet === 'Main Outlet (Gulistan-e-Johar)') {
+            const todayMain = [3, 6, 9, 12, 10, 13, 16, 18, 29, 34, 25, 15, 7];
+            count = todayMain[hIdx];
+          } else if (dateStr === '2026-11-13' && outlet === 'Outlet 02 (Tariq Road)') {
+            const todaySec = [2, 4, 7, 10, 9, 11, 14, 15, 24, 27, 21, 12, 5];
+            count = todaySec[hIdx];
+          } else if (dateStr === '2026-11-12' && outlet === 'Main Outlet (Gulistan-e-Johar)') {
+            const yestMain = [2, 5, 8, 11, 9, 12, 14, 3, 25, 30, 22, 14, 6]; // 5 PM slot has 3 entries as an example
+            count = yestMain[hIdx];
+          }
+
+          hourlyMap[slot.hour] = count;
+
+          // Populate realistic DVR video_batches & entry_events for recent 4 days
+          if (offsetDays <= 3 && (slot.hour === 17 || slot.hour === 18 || slot.hour === 19 || slot.hour === 20)) {
+            const camCode = oIdx === 0 ? '130' : '204';
+            const hh = String(slot.hour).padStart(2, '0');
+            const half1Count = Math.ceil(count * 0.48);
+            const half2Count = count - half1Count;
+
+            [
+              { min: '00', cnt: half1Count },
+              { min: '30', cnt: half2Count }
+            ].forEach((clip, cIdx) => {
+              const fileName = `${camCode}_entrance_${dateStr} ${hh}${clip.min}00.avi`;
+              VIDEO_BATCHES.push({
+                file_name: fileName,
+                outlet_name: outlet,
+                date: dateStr,
+                hour: slot.hour,
+                recording_start: `${dateStr} ${hh}:${clip.min}:00`,
+                duration_sec: 1800,
+                total_entries: clip.cnt,
+                status: 'Completed'
+              });
+
+              // Generate individual entry_events rows for each counted person
+              for (let p = 0; p < clip.cnt; p++) {
+                eventAutoId++;
+                const secOffset = Math.min(1785, Math.floor(((p + 0.5) / Math.max(clip.cnt, 1)) * 1740 + seededRandom(eventAutoId) * 40));
+                const totalSecondsInHour = (cIdx * 1800) + secOffset;
+                const evMin = String(Math.floor(totalSecondsInHour / 60)).padStart(2, '0');
+                const evSec = String(totalSecondsInHour % 60).padStart(2, '0');
+                const trackId = 12 + ((eventAutoId * 7) % 340);
+
+                ENTRY_EVENTS.push({
+                  id: eventAutoId,
+                  outlet_name: outlet,
+                  date: dateStr,
+                  hour: slot.hour,
+                  entry_timestamp: `${dateStr} ${hh}:${evMin}:${evSec}`,
+                  track_id: trackId,
+                  video_offset_sec: Number((secOffset + seededRandom(trackId) * 0.8).toFixed(1))
+                });
+              }
+            });
+          }
+        });
+
+        DAILY_RECORDS.push({
+          date: dateStr,
+          outlet,
+          hourly: hourlyMap
+        });
+      });
+    }
+
+    // Sort events newest first
+    ENTRY_EVENTS.sort((a, b) => b.entry_timestamp.localeCompare(a.entry_timestamp));
+    VIDEO_BATCHES.sort((a, b) => b.recording_start.localeCompare(a.recording_start));
+
+    // =========================================================================
+    // 2. DASHBOARD APPLICATION STATE
+    // =========================================================================
+    const state = {
+      outlet: 'all',
+      period: 'today',
+      hour: 'all',
+      customStart: '2026-11-07',
+      customEnd: '2026-11-13',
+      activeTab: 'hourly'
+    };
+
+    let hourlyChartInstance = null;
+    let trendChartInstance = null;
+
+    // =========================================================================
+    // 3. DATE WINDOW & DATA FILTERING ENGINE
+    // =========================================================================
+    function getPeriodBounds(period) {
+      const today = parseDateISO(TODAY_STR);
+
+      if (period === 'today') {
+        const prev = new Date(today);
+        prev.setDate(today.getDate() - 1);
+        return {
+          start: TODAY_STR,
+          end: TODAY_STR,
+          prevStart: formatDateISO(prev),
+          prevEnd: formatDateISO(prev),
+          compareLabel: 'vs yesterday',
+          isSingleDay: true
+        };
+      }
+
+      if (period === 'yesterday') {
+        const yest = new Date(today);
+        yest.setDate(today.getDate() - 1);
+        const dayBefore = new Date(today);
+        dayBefore.setDate(today.getDate() - 2);
+        return {
+          start: formatDateISO(yest),
+          end: formatDateISO(yest),
+          prevStart: formatDateISO(dayBefore),
+          prevEnd: formatDateISO(dayBefore),
+          compareLabel: 'vs prior day',
+          isSingleDay: true
+        };
+      }
+
+      if (period === 'this_week') {
+        // Last 7 days (Nov 7 - Nov 13)
+        const start = new Date(today);
+        start.setDate(today.getDate() - 6);
+        const prevEnd = new Date(start);
+        prevEnd.setDate(start.getDate() - 1);
+        const prevStart = new Date(prevEnd);
+        prevStart.setDate(prevEnd.getDate() - 6);
+        return {
+          start: formatDateISO(start),
+          end: TODAY_STR,
+          prevStart: formatDateISO(prevStart),
+          prevEnd: formatDateISO(prevEnd),
+          compareLabel: 'vs last week',
+          isSingleDay: false
+        };
+      }
+
+      if (period === 'last_week') {
+        const end = new Date(today);
+        end.setDate(today.getDate() - 7);
+        const start = new Date(end);
+        start.setDate(end.getDate() - 6);
+        const prevEnd = new Date(start);
+        prevEnd.setDate(start.getDate() - 1);
+        const prevStart = new Date(prevEnd);
+        prevStart.setDate(prevEnd.getDate() - 6);
+        return {
+          start: formatDateISO(start),
+          end: formatDateISO(end),
+          prevStart: formatDateISO(prevStart),
+          prevEnd: formatDateISO(prevEnd),
+          compareLabel: 'vs prior week',
+          isSingleDay: false
+        };
+      }
+
+      if (period === 'this_month') {
+        // Nov 1 - Nov 13 vs Oct 19 - Oct 31
+        return {
+          start: '2026-11-01',
+          end: TODAY_STR,
+          prevStart: '2026-10-19',
+          prevEnd: '2026-10-31',
+          compareLabel: 'vs prev 13 days',
+          isSingleDay: false
+        };
+      }
+
+      // Custom range
+      let s = state.customStart || '2026-11-07';
+      let e = state.customEnd || TODAY_STR;
+      if (s > e) [s, e] = [e, s];
+
+      const sDate = parseDateISO(s);
+      const eDate = parseDateISO(e);
+      const spanDays = Math.max(1, Math.round((eDate - sDate) / (1000 * 60 * 60 * 24)) + 1);
+      const pEnd = new Date(sDate);
+      pEnd.setDate(sDate.getDate() - 1);
+      const pStart = new Date(pEnd);
+      pStart.setDate(pEnd.getDate() - (spanDays - 1));
+
+      return {
+        start: s,
+        end: e,
+        prevStart: formatDateISO(pStart),
+        prevEnd: formatDateISO(pEnd),
+        compareLabel: 'vs prior period',
+        isSingleDay: s === e
+      };
+    }
+
+    function aggregateFootfall(startDate, endDate, outletFilter, hourFilter) {
+      const matchingDays = DAILY_RECORDS.filter(rec => {
+        const inDate = rec.date >= startDate && rec.date <= endDate;
+        const inOutlet = outletFilter === 'all' || rec.outlet === outletFilter;
+        return inDate && inOutlet;
+      });
+
+      const hourlyTotals = {};
+      OPERATING_HOURS.forEach(s => { hourlyTotals[s.hour] = 0; });
+
+      const dailyTotalsMap = {};
+
+      matchingDays.forEach(rec => {
+        if (!dailyTotalsMap[rec.date]) dailyTotalsMap[rec.date] = 0;
+
+        OPERATING_HOURS.forEach(s => {
+          const val = rec.hourly[s.hour] || 0;
+          hourlyTotals[s.hour] += val;
+
+          if (hourFilter === 'all' || Number(hourFilter) === s.hour) {
+            dailyTotalsMap[rec.date] += val;
+          }
+        });
+      });
+
+      const uniqueDates = Object.keys(dailyTotalsMap).sort();
+      const totalEntries = hourFilter === 'all'
+        ? Object.values(hourlyTotals).reduce((a, b) => a + b, 0)
+        : (hourlyTotals[Number(hourFilter)] || 0);
+
+      return {
+        hourlyTotals,
+        dailyTotalsMap,
+        uniqueDates,
+        dayCount: Math.max(1, uniqueDates.length),
+        totalEntries
+      };
+    }
+
+    // =========================================================================
+    // 4. UI RENDERING & CHART UPDATES
+    // =========================================================================
+    function renderDashboard() {
+      const bounds = getPeriodBounds(state.period);
+      const current = aggregateFootfall(bounds.start, bounds.end, state.outlet, state.hour);
+      const previous = aggregateFootfall(bounds.prevStart, bounds.prevEnd, state.outlet, state.hour);
+
+      // Update Period Pill Styles
+      document.querySelectorAll('.period-pill').forEach(btn => {
+        const isActive = btn.dataset.period === state.period;
+        if (isActive) {
+          btn.className = 'period-pill rounded-xl bg-[#0F172A] px-3.5 py-2 text-xs font-medium text-white shadow-xs transition';
+        } else {
+          btn.className = 'period-pill rounded-xl border border-transparent bg-[#F8FAFC] px-3.5 py-2 text-xs font-medium text-[#64748B] hover:border-[#E2E8F0] hover:bg-white hover:text-[#0F172A] transition';
+        }
+      });
+
+      // Toggle Custom Date Drawer
+      const customBar = document.getElementById('custom-date-bar');
+      if (state.period === 'custom') {
+        customBar.classList.remove('hidden');
+        customBar.classList.add('flex');
+        document.getElementById('active-range-label').textContent =
+          `${formatDisplayDate(bounds.start)} — ${formatDisplayDate(bounds.end)}`;
+      } else {
+        customBar.classList.add('hidden');
+        customBar.classList.remove('flex');
+      }
+
+      // Reset Hour button visibility
+      const resetHourBtn = document.getElementById('reset-hour-btn');
+      if (state.hour !== 'all') {
+        resetHourBtn.classList.remove('hidden');
+        resetHourBtn.classList.add('inline-flex');
+      } else {
+        resetHourBtn.classList.add('hidden');
+        resetHourBtn.classList.remove('inline-flex');
+      }
+
+      // ---- KPI 1: Total Confirmed Entries & Delta ----
+      document.getElementById('kpi-total-entries').textContent = current.totalEntries.toLocaleString();
+      const prevTotal = previous.totalEntries;
+      const deltaPct = prevTotal > 0 ? (((current.totalEntries - prevTotal) / prevTotal) * 100) : 0;
+      const deltaSign = deltaPct >= 0 ? '+' : '';
+      const deltaBadge = document.getElementById('kpi-delta-badge');
+      const deltaText = document.getElementById('kpi-delta-text');
+
+      deltaText.textContent = `${deltaSign}${deltaPct.toFixed(1)}% ${bounds.compareLabel}`;
+      if (deltaPct >= 0) {
+        deltaBadge.className = 'inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-xs font-medium text-[#059669]';
+      } else {
+        deltaBadge.className = 'inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#64748B]';
+      }
+
+      const selectedHourObj = OPERATING_HOURS.find(h => String(h.hour) === String(state.hour));
+      document.getElementById('kpi-period-caption').textContent = selectedHourObj
+        ? `Filtered to ${selectedHourObj.label}`
+        : `${formatDisplayDate(bounds.start)}${bounds.isSingleDay ? '' : ' – ' + formatDisplayDate(bounds.end)}`;
+
+      // ---- KPI 2: Peak Traffic Hour ----
+      let peakSlot = OPERATING_HOURS[0];
+      let peakVal = -1;
+      OPERATING_HOURS.forEach(slot => {
+        const val = current.hourlyTotals[slot.hour] || 0;
+        if (val > peakVal) {
+          peakVal = val;
+          peakSlot = slot;
+        }
+      });
+
+      if (selectedHourObj) {
+        document.getElementById('kpi-peak-hour').textContent = selectedHourObj.label;
+        document.getElementById('kpi-peak-count').textContent = `${current.totalEntries.toLocaleString()} entries in selected slot`;
+      } else {
+        document.getElementById('kpi-peak-hour').textContent = peakSlot.label;
+        document.getElementById('kpi-peak-count').textContent = `${peakVal.toLocaleString()} entries recorded in peak window`;
+      }
+
+      // ---- KPI 3: Average Entries / Hour ----
+      const activeHourCount = selectedHourObj ? current.dayCount : (13 * current.dayCount);
+      const avgPerHour = current.totalEntries / Math.max(1, activeHourCount);
+      document.getElementById('kpi-avg-hour').textContent = avgPerHour.toFixed(1);
+      document.getElementById('kpi-avg-caption').textContent = selectedHourObj
+        ? `Daily average for ${selectedHourObj.short} slot`
+        : `Across ${activeHourCount} active store hours`;
+
+      // ---- KPI 4: Processed CCTV Batches ----
+      const outletMultiplier = state.outlet === 'all' ? 2 : 1;
+      const estimatedBatches = selectedHourObj
+        ? (2 * current.dayCount * outletMultiplier)
+        : (26 * current.dayCount * outletMultiplier);
+      document.getElementById('kpi-batches-count').textContent = estimatedBatches.toLocaleString();
+      document.getElementById('kpi-batches-caption').textContent = `${outletMultiplier} camera feed${outletMultiplier > 1 ? 's' : ''} • 30-min DVR clips`;
+
+      // ---- Update Bar Chart & Line Chart ----
+      updateBarChart(current.hourlyTotals);
+      updateTrendChart(bounds, current);
+
+      // ---- Update Tables ----
+      renderHourlyTable(current.hourlyTotals);
+      renderVideosTable(bounds);
+      renderEventsTable(bounds);
+
+      // Re-initialize Lucide icons for any newly injected rows
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    }
+
+    function updateBarChart(hourlyTotals) {
+      const ctx = document.getElementById('hourlyBarChart').getContext('2d');
+      const labels = OPERATING_HOURS.map(s => s.short);
+      const values = OPERATING_HOURS.map(s => hourlyTotals[s.hour] || 0);
+
+      const selectedHourObj = OPERATING_HOURS.find(h => String(h.hour) === String(state.hour));
+      document.getElementById('bar-chart-badge').textContent = selectedHourObj
+        ? `Highlighted: ${selectedHourObj.label}`
+        : '10:00 AM – 11:00 PM';
+
+      // Minimal color palette: Muted Blue (#2563EB) or Deep Slate highlight (#0F172A)
+      const bgColors = OPERATING_HOURS.map(s => {
+        if (state.hour === 'all') return '#2563EB';
+        return String(s.hour) === String(state.hour) ? '#0F172A' : '#CBD5E1';
+      });
+
+      if (hourlyChartInstance) {
+        hourlyChartInstance.data.labels = labels;
+        hourlyChartInstance.data.datasets[0].data = values;
+        hourlyChartInstance.data.datasets[0].backgroundColor = bgColors;
+        hourlyChartInstance.update();
+        return;
+      }
+
+      hourlyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Confirmed Entries',
+            data: values,
+            backgroundColor: bgColors,
+            borderRadius: 6,
+            maxBarThickness: 28
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (_, elements) => {
+            if (elements && elements.length > 0) {
+              const idx = elements[0].index;
+              const clickedHour = String(OPERATING_HOURS[idx].hour);
+              state.hour = (state.hour === clickedHour) ? 'all' : clickedHour;
+              document.getElementById('hour-select').value = state.hour;
+              renderDashboard();
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0F172A',
+              titleFont: { family: 'Inter', size: 12, weight: '600' },
+              bodyFont: { family: 'Inter', size: 12 },
+              padding: 10,
+              cornerRadius: 8,
+              callbacks: {
+                title: (items) => OPERATING_HOURS[items[0].dataIndex].label,
+                label: (item) => ` Confirmed Entries: ${item.raw}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: { color: '#64748B', font: { family: 'Inter', size: 11 } }
+            },
+            y: {
+              beginAtZero: true,
+              border: { display: false },
+              grid: { color: '#F1F5F9' },
+              ticks: { color: '#64748B', font: { family: 'Inter', size: 11 }, precision: 0 }
+            }
+          }
+        }
+      });
+    }
+
+    function updateTrendChart(bounds, current) {
+      const ctx = document.getElementById('trendLineChart').getContext('2d');
+      let labels = [];
+      let values = [];
+
+      if (bounds.isSingleDay) {
+        document.getElementById('trend-chart-title').textContent = 'Cumulative Entry Progression';
+        document.getElementById('trend-chart-subtitle').textContent = 'Running store entry count across operating hours';
+        document.getElementById('trend-chart-badge').textContent = formatDisplayDate(bounds.start);
+
+        let running = 0;
+        OPERATING_HOURS.forEach(s => {
+          running += (current.hourlyTotals[s.hour] || 0);
+          labels.push(s.short);
+          values.push(running);
+        });
+      } else {
+        document.getElementById('trend-chart-title').textContent = 'Daily Footfall Trend';
+        document.getElementById('trend-chart-subtitle').textContent = 'Confirmed entries per day across selected range';
+        document.getElementById('trend-chart-badge').textContent = `${current.uniqueDates.length} Days`;
+
+        labels = current.uniqueDates.map(d => formatShortDay(d));
+        values = current.uniqueDates.map(d => current.dailyTotalsMap[d] || 0);
+      }
+
+      if (trendChartInstance) {
+        trendChartInstance.data.labels = labels;
+        trendChartInstance.data.datasets[0].data = values;
+        trendChartInstance.update();
+        return;
+      }
+
+      trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Entries',
+            data: values,
+            borderColor: '#2563EB',
+            backgroundColor: 'rgba(37, 99, 235, 0.08)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: '#2563EB',
+            pointBorderColor: '#FFFFFF',
+            pointBorderWidth: 1.5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0F172A',
+              titleFont: { family: 'Inter', size: 12, weight: '600' },
+              bodyFont: { family: 'Inter', size: 12 },
+              padding: 10,
+              cornerRadius: 8
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: { color: '#64748B', font: { family: 'Inter', size: 11 }, maxTicksLimit: 7 }
+            },
+            y: {
+              beginAtZero: true,
+              border: { display: false },
+              grid: { color: '#F1F5F9' },
+              ticks: { color: '#64748B', font: { family: 'Inter', size: 11 }, precision: 0 }
+            }
+          }
+        }
+      });
+    }
+
+    function renderHourlyTable(hourlyTotals) {
+      const tbody = document.getElementById('hourly-table-body');
+      const allSum = Object.values(hourlyTotals).reduce((a, b) => a + b, 0) || 1;
+      const maxVal = Math.max(...Object.values(hourlyTotals), 1);
+
+      const slotsToRender = state.hour === 'all'
+        ? OPERATING_HOURS
+        : OPERATING_HOURS.filter(s => String(s.hour) === String(state.hour));
+
+      if (state.activeTab === 'hourly') {
+        document.getElementById('table-context-label').textContent =
+          `Showing ${slotsToRender.length} operating slot${slotsToRender.length > 1 ? 's' : ''}`;
+      }
+
+      tbody.innerHTML = slotsToRender.map(slot => {
+        const count = hourlyTotals[slot.hour] || 0;
+        const sharePct = ((count / allSum) * 100).toFixed(1);
+        const relRatio = count / maxVal;
+
+        let statusBadge = '';
+        if (relRatio >= 0.85) {
+          statusBadge = '<span class="inline-flex items-center rounded-full bg-[#0F172A] px-2.5 py-0.5 text-xs font-medium text-white">Peak</span>';
+        } else if (relRatio >= 0.55) {
+          statusBadge = '<span class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-[#2563EB]">High</span>';
+        } else if (relRatio >= 0.25) {
+          statusBadge = '<span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#0F172A]">Normal</span>';
+        } else {
+          statusBadge = '<span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-[#64748B]">Low</span>';
+        }
+
+        const isSelected = String(state.hour) === String(slot.hour);
+
+        return `
+          <tr data-slot-hour="${slot.hour}"
+              class="hourly-row cursor-pointer transition hover:bg-[#F8FAFC] ${isSelected ? 'bg-slate-50/90' : ''}">
+            <td class="px-5 py-3.5 font-medium text-[#0F172A] whitespace-nowrap">${slot.label}</td>
+            <td class="px-5 py-3.5 font-semibold text-[#0F172A]">${count.toLocaleString()}</td>
+            <td class="px-5 py-3.5">
+              <div class="flex items-center gap-3">
+                <div class="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                  <div class="h-full rounded-full bg-[#2563EB]" style="width: ${Math.min(100, Number(sharePct) * 2.4)}%"></div>
+                </div>
+                <span class="text-xs font-medium text-[#64748B]">${sharePct}%</span>
+              </div>
+            </td>
+            <td class="px-5 py-3.5">${statusBadge}</td>
+            <td class="px-5 py-3.5 text-right">
+              <span class="text-xs font-medium text-[#2563EB] hover:underline">
+                ${isSelected ? 'Show All Hours' : 'Filter Slot'}
+              </span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Click row to isolate or reset hour slot
+      tbody.querySelectorAll('.hourly-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const clicked = row.dataset.slotHour;
+          state.hour = (String(state.hour) === clicked) ? 'all' : clicked;
+          document.getElementById('hour-select').value = state.hour;
+          renderDashboard();
+        });
+      });
+    }
+
+    function renderVideosTable(bounds) {
+      const tbody = document.getElementById('videos-table-body');
+      let filtered = VIDEO_BATCHES.filter(v => {
+        const outletOk = state.outlet === 'all' || v.outlet_name === state.outlet;
+        const hourOk = state.hour === 'all' || Number(state.hour) === v.hour;
+        const dateOk = v.date >= bounds.start && v.date <= bounds.end;
+        return outletOk && hourOk && dateOk;
+      });
+
+      // Fallback to latest available batches if custom range predates sample clip logs
+      if (filtered.length === 0) {
+        filtered = VIDEO_BATCHES.filter(v => {
+          const outletOk = state.outlet === 'all' || v.outlet_name === state.outlet;
+          const hourOk = state.hour === 'all' || Number(state.hour) === v.hour;
+          return outletOk && hourOk;
+        }).slice(0, 10);
+      }
+
+      if (state.activeTab === 'videos') {
+        document.getElementById('table-context-label').textContent = `Showing ${filtered.length} processed DVR clips`;
+      }
+
+      tbody.innerHTML = filtered.slice(0, 14).map(v => `
+        <tr class="transition hover:bg-[#F8FAFC]">
+          <td class="px-5 py-3.5 font-mono text-xs font-medium text-[#0F172A] whitespace-nowrap">
+            <div class="flex items-center gap-2">
+              <i data-lucide="file-video" class="h-4 w-4 text-[#64748B]"></i>
+              <span>${v.file_name}</span>
+            </div>
+          </td>
+          <td class="px-5 py-3.5 text-xs text-[#64748B] whitespace-nowrap">${v.outlet_name}</td>
+          <td class="px-5 py-3.5 text-xs text-[#0F172A] whitespace-nowrap">${v.recording_start}</td>
+          <td class="px-5 py-3.5 text-xs text-[#64748B] whitespace-nowrap">30m 00s</td>
+          <td class="px-5 py-3.5 font-semibold text-[#0F172A]">${v.total_entries}</td>
+          <td class="px-5 py-3.5 text-right whitespace-nowrap">
+            <span class="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-xs font-medium text-[#059669]">
+              <span class="h-1.5 w-1.5 rounded-full bg-[#059669]"></span>
+              ${v.status}
+            </span>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderEventsTable(bounds) {
+      const tbody = document.getElementById('events-table-body');
+      let filtered = ENTRY_EVENTS.filter(ev => {
+        const outletOk = state.outlet === 'all' || ev.outlet_name === state.outlet;
+        const hourOk = state.hour === 'all' || Number(state.hour) === ev.hour;
+        const dateOk = ev.date >= bounds.start && ev.date <= bounds.end;
+        return outletOk && hourOk && dateOk;
+      });
+
+      if (filtered.length === 0) {
+        filtered = ENTRY_EVENTS.filter(ev => {
+          const outletOk = state.outlet === 'all' || ev.outlet_name === state.outlet;
+          const hourOk = state.hour === 'all' || Number(state.hour) === ev.hour;
+          return outletOk && hourOk;
+        });
+      }
+
+      const topEvents = filtered.slice(0, 15);
+      document.getElementById('events-count-pill').textContent =
+        `Showing latest ${topEvents.length} of ${filtered.length.toLocaleString()} events`;
+
+      if (state.activeTab === 'events') {
+        document.getElementById('table-context-label').textContent = `${filtered.length.toLocaleString()} confirmed entry events`;
+      }
+
+      tbody.innerHTML = topEvents.map(ev => `
+        <tr class="transition hover:bg-[#F8FAFC]">
+          <td class="px-5 py-3.5 font-mono text-xs text-[#64748B]">#${ev.id}</td>
+          <td class="px-5 py-3.5 font-mono text-xs font-medium text-[#0F172A] whitespace-nowrap">${ev.entry_timestamp}</td>
+          <td class="px-5 py-3.5 text-xs text-[#64748B] whitespace-nowrap">${ev.outlet_name}</td>
+          <td class="px-5 py-3.5 whitespace-nowrap">
+            <span class="inline-flex items-center rounded-md border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 font-mono text-xs font-medium text-[#0F172A]">
+              ID:${ev.track_id}
+            </span>
+          </td>
+          <td class="px-5 py-3.5 text-right font-mono text-xs text-[#64748B]">+${ev.video_offset_sec}s</td>
+        </tr>
+      `).join('');
+    }
+
+    // =========================================================================
+    // 5. CSV EXPORT & TOAST HELPER
+    // =========================================================================
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-message').textContent = msg;
+      toast.classList.remove('hidden');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3000);
+    }
+
+    function exportFilteredCSV() {
+      const bounds = getPeriodBounds(state.period);
+      const current = aggregateFootfall(bounds.start, bounds.end, state.outlet, state.hour);
+      const allSum = Object.values(current.hourlyTotals).reduce((a, b) => a + b, 0) || 1;
+
+      const slots = state.hour === 'all'
+        ? OPERATING_HOURS
+        : OPERATING_HOURS.filter(s => String(s.hour) === String(state.hour));
+
+      const rows = [
+        ['Outlet', 'Start Date', 'End Date', 'Time Slot', 'Confirmed Entries', 'Traffic Share (%)']
+      ];
+
+      slots.forEach(s => {
+        const cnt = current.hourlyTotals[s.hour] || 0;
+        const pct = ((cnt / allSum) * 100).toFixed(1);
+        rows.push([
+          `"${state.outlet === 'all' ? 'All Outlets' : state.outlet}"`,
+          bounds.start,
+          bounds.end,
+          `"${s.label}"`,
+          cnt,
+          pct
+        ]);
+      });
+
+      const csvContent = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `footfall_report_${bounds.start}_to_${bounds.end}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast(`Exported CSV report (${bounds.start} to ${bounds.end})`);
+    }
+
+    // =========================================================================
+    // 6. EVENT LISTENERS & INITIAL BOOT
+    // =========================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('start-date').value = state.customStart;
+      document.getElementById('end-date').value = state.customEnd;
+
+      // Outlet selector
+      document.getElementById('outlet-select').addEventListener('change', (e) => {
+        state.outlet = e.target.value;
+        renderDashboard();
+      });
+
+      // Period pills
+      document.querySelectorAll('.period-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.period = btn.dataset.period;
+          renderDashboard();
+        });
+      });
+
+      // Hour dropdown & Clear button
+      document.getElementById('hour-select').addEventListener('change', (e) => {
+        state.hour = e.target.value;
+        renderDashboard();
+      });
+
+      document.getElementById('reset-hour-btn').addEventListener('click', () => {
+        state.hour = 'all';
+        document.getElementById('hour-select').value = 'all';
+        renderDashboard();
+      });
+
+      // Custom date inputs
+      document.getElementById('start-date').addEventListener('change', (e) => {
+        if (e.target.value) {
+          state.customStart = e.target.value;
+          renderDashboard();
+        }
+      });
+
+      document.getElementById('end-date').addEventListener('change', (e) => {
+        if (e.target.value) {
+          state.customEnd = e.target.value;
+          renderDashboard();
+        }
+      });
+
+      // Tab switcher
+      document.querySelectorAll('.data-tab').forEach(tabBtn => {
+        tabBtn.addEventListener('click', () => {
+          state.activeTab = tabBtn.dataset.tab;
+
+          document.querySelectorAll('.data-tab').forEach(t => {
+            if (t.dataset.tab === state.activeTab) {
+              t.className = 'data-tab border-b-2 border-[#0F172A] pb-3.5 text-sm font-semibold text-[#0F172A] whitespace-nowrap transition';
+            } else {
+              t.className = 'data-tab border-b-2 border-transparent pb-3.5 text-sm font-medium text-[#64748B] hover:text-[#0F172A] whitespace-nowrap transition';
+            }
+          });
+
+          ['hourly', 'videos', 'events'].forEach(panelKey => {
+            const panel = document.getElementById(`tab-panel-${panelKey}`);
+            if (panelKey === state.activeTab) {
+              panel.classList.remove('hidden');
+            } else {
+              panel.classList.add('hidden');
+            }
+          });
+
+          renderDashboard();
+        });
+      });
+
+      // CSV Export
+      document.getElementById('export-csv-btn').addEventListener('click', exportFilteredCSV);
+
+      // Initial Render
+      renderDashboard();
+    });
+  </script>
+</body>
+</html>
