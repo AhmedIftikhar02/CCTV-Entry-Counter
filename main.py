@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from collections import deque
 from ultralytics import YOLO
+from age_classifier import AgeClassifier  # Imported our new modular age classifier
 
 # ==========================================
 # CONFIGURATION
@@ -58,10 +59,6 @@ def mouse_callback(event, x, y, flags, param):
 
 
 def compute_line_geometry(p1, p2, flip_dir=False):
-    """
-    Always normalizes p1 -> p2 left-to-right first so the default 'IN' arrow
-    ALWAYS points downward (into the store) regardless of click order.
-    """
     ax, ay = float(p1[0]), float(p1[1])
     bx, by = float(p2[0]), float(p2[1])
     if ax > bx:
@@ -73,7 +70,6 @@ def compute_line_geometry(p1, p2, flip_dir=False):
     if length == 0:
         return 0.0, (0.0, 1.0)
 
-    # With ax <= bx, ny = dx / length is ALWAYS >= 0 (pointing downward into the store)
     nx = -dy / length
     ny = dx / length
     if flip_dir:
@@ -148,6 +144,7 @@ def save_calibration(video_key, p1, p2, flip_dir):
 # INITIALIZATION
 # ==========================================
 model = YOLO(MODEL_PATH)
+age_classifier = AgeClassifier()  # Initialize Age Classifier object
 cap = cv2.VideoCapture(VIDEO_PATH)
 
 if not cap.isOpened():
@@ -180,38 +177,28 @@ video_key = os.path.basename(VIDEO_PATH)
 saved_calib = load_saved_calibration(video_key)
 
 print("====================================")
-print("  GENERIC CCTV ENTRY COUNTER        ")
+print("  GENERIC CCTV ENTRY COUNTER (AGE)  ")
 print("====================================")
 print(f"Video      : {video_key} ({orig_width}x{orig_height} @ {fps:.1f} FPS)")
 print(f"Processing : {width}x{height} | Stride 1/{frame_stride} (~{effective_fps:.1f} FPS)")
-print("Controls:")
-print("  Press 'c'     -> Draw Custom Virtual Line & Entry Arrow")
-if saved_calib:
-    print("  Press 'SPACE' -> Use Saved Line for this Video")
-else:
-    print("  Press 'SPACE' -> Use Default Line")
 print("====================================")
 
 setup_preview = first_frame.copy()
 if saved_calib:
     sp1, sp2, sflip = saved_calib
     _, snorm = compute_line_geometry(sp1, sp2, sflip)
-    draw_entry_line(setup_preview, sp1, sp2, snorm, "SAVED LINE (Press SPACE or 'c')")
+    draw_entry_line(setup_preview, sp1, sp2, snorm, "SAVED LINE")
 else:
     dp1 = (int(width * DEFAULT_LINE_START[0]), int(height * DEFAULT_LINE_START[1]))
     dp2 = (int(width * DEFAULT_LINE_END[0]), int(height * DEFAULT_LINE_END[1]))
     _, dnorm = compute_line_geometry(dp1, dp2, False)
-    draw_entry_line(setup_preview, dp1, dp2, dnorm, "DEFAULT LINE (Press 'c' to Calibrate)")
+    draw_entry_line(setup_preview, dp1, dp2, dnorm, "DEFAULT LINE")
 
 cv2.imshow("Setup - 'c' to Calibrate | SPACE to Start", setup_preview)
 key = cv2.waitKey(0) & 0xFF
 
 flip_dir = False
 if key == ord("c"):
-    print("\n--- CALIBRATION MODE ---")
-    print("1. Click TWO points across the doorway threshold.")
-    print("2. Verify 'IN' arrow points INSIDE the store (press 'f' only if needed).")
-    print("3. Press ENTER to confirm and start.")
     calib_frame = first_frame.copy()
     cv2.namedWindow("Calibration")
     cv2.setMouseCallback("Calibration", mouse_callback)
@@ -224,11 +211,6 @@ if key == ord("c"):
         if len(calibration_points) == 2:
             _, preview_norm = compute_line_geometry(calibration_points[0], calibration_points[1], flip_dir)
             draw_entry_line(temp_img, calibration_points[0], calibration_points[1], preview_norm, "CALIBRATED LINE")
-            cv2.putText(temp_img, "Verify IN Arrow points INSIDE | ENTER to Start", (20, 35),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
-        else:
-            cv2.putText(temp_img, f"Click Point {len(calibration_points) + 1} of 2", (20, 35),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         cv2.imshow("Calibration", temp_img)
         k = cv2.waitKey(20) & 0xFF
@@ -238,7 +220,6 @@ if key == ord("c"):
             line_start = calibration_points[0]
             line_end = calibration_points[1]
             save_calibration(video_key, line_start, line_end, flip_dir)
-            print(f"Calibration saved for '{video_key}'.")
             break
 
     cv2.destroyWindow("Calibration")
@@ -267,8 +248,10 @@ recent_counts = deque(maxlen=20)
 raw_frame_idx = 0
 frame_number = 0
 total_entries = 0
+young_entries = 0  # Category Counter for Young
+old_entries = 0    # Category Counter for Old/Adult
 
-print("\nENTRY COUNTER ACTIVE. Press 'q' to stop...")
+print("\nENTRY COUNTER WITH AGE LOGS ACTIVE. Press 'q' to stop...")
 playback_start_wall = time.perf_counter()
 
 while True:
@@ -339,7 +322,8 @@ while True:
                     "origin_head": None,
                     "is_moving_inward": False,
                     "counted_perp_dist": None,
-                    "entry_counted": False
+                    "entry_counted": False,
+                    "age_category": None
                 }
 
             track = tracks[track_id]
@@ -348,14 +332,12 @@ while True:
             if box_h > track["max_box_h"]:
                 track["max_box_h"] = box_h
 
-            # Filter waist-clipped exit boxes during leg occlusions
             at_frame_edge = (y2 >= height - 10) or (y1 <= 10) or (x1 <= 10) or (x2 >= width - 10)
             is_full_body = (
                 (aspect_ratio >= MIN_BODY_ASPECT_RATIO and box_h >= 0.70 * track["max_box_h"])
                 or at_frame_edge
             )
 
-            # Safety guard: strip green status if an ID jumps onto someone walking backward (exiting)
             if track["entry_counted"] and track["counted_perp_dist"] is not None:
                 if (track["counted_perp_dist"] - perp_dist) > 25.0:
                     track["entry_counted"] = False
@@ -364,7 +346,6 @@ while True:
                     track["threshold_candidate"] = False
 
             if is_full_body and within_door_span and not track["indoor_origin"]:
-                # Case A: Clearly detected outside the virtual line (<= -3px)
                 if perp_dist <= STRICT_OUTSIDE_PX:
                     track["saw_strict_outside"] = True
                     if track["min_origin_perp"] is None or perp_dist < track["min_origin_perp"]:
@@ -372,8 +353,6 @@ while True:
                     if track["origin_foot"] is None:
                         track["origin_foot"] = (foot_x, foot_y)
                         track["origin_head"] = (head_x, head_y)
-
-                # Case B: Emerged right on the threshold (e.g. from behind right pillar, <= +10px)
                 elif (
                     not track["saw_strict_outside"]
                     and not track["threshold_candidate"]
@@ -400,7 +379,6 @@ while True:
                     net_dy = center_y - track["first_center"][1]
                     overall_inward = net_dx * entry_normal[0] + net_dy * entry_normal[1]
 
-                    # Only show [ENTERING] if actively walking inward (ignores stationary mannequins!)
                     track["is_moving_inward"] = (perp_travel >= 8.0 and overall_inward >= 8.0)
 
                     required_travel = (
@@ -428,18 +406,31 @@ while True:
 
                         track["entry_counted"] = True
                         track["counted_perp_dist"] = perp_dist
+                        
+                        # Classify Age upon successful entry counting
+                        category = age_classifier.classify_age(frame, x1, y1, x2, y2)
+                        track["age_category"] = category
+
                         if not is_duplicate:
                             total_entries += 1
+                            if category == "Young":
+                                young_entries += 1
+                            else:
+                                old_entries += 1
+
                             recent_counts.append((frame_number, foot_x, foot_y))
+                            
+                            # REAL-TIME LOG PRINT WITH AGE CATEGORY
                             print(
                                 f"[{timestamp} | F:{raw_frame_idx:4d}] ENTRY: ID {track_id:3d} | "
-                                f"Total: {total_entries:2d} | foot_in={foot_inward:+.0f}px | head_in={head_inward:+.0f}px"
+                                f"Category: [{category.upper()}] | Total: {total_entries:2d} "
+                                f"(Young: {young_entries}, Old: {old_entries})"
                             )
 
-            # Visualization (Stationary mannequins & exiting people stay plain grey)
             if track["entry_counted"]:
                 box_color = (0, 255, 0)
-                label = f"ID:{track_id} [COUNTED]"
+                cat_label = track.get("age_category", "Young")
+                label = f"ID:{track_id} [{cat_label}]"
             elif track["is_moving_inward"] and not track["indoor_origin"]:
                 box_color = (255, 200, 0)
                 label = f"ID:{track_id} [ENTERING]"
@@ -456,10 +447,12 @@ while True:
     for tid in inactive_ids:
         del tracks[tid]
 
-    # Top Counter Banner
-    cv2.rectangle(frame, (15, 15), (410, 70), (0, 0, 0), -1)
-    cv2.putText(frame, f"TOTAL ENTRIES: {total_entries}  ({timestamp})", (25, 52),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.78, (0, 255, 0), 2)
+    # Top Counter Banner (Showing Total, Young, and Old Counts Live)
+    cv2.rectangle(frame, (15, 15), (460, 95), (0, 0, 0), -1)
+    cv2.putText(frame, f"TOTAL: {total_entries}  ({timestamp})", (25, 42),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(frame, f"Young: {young_entries} | Old/Adult: {old_entries}", (25, 75),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
     if out_writer is not None:
         out_writer.write(frame)
@@ -480,5 +473,7 @@ print("\n====================================")
 print("       FINAL EXECUTION REPORT       ")
 print("====================================")
 print(f"Video File            : {video_key}")
-print(f"Final Counted Entries : {total_entries}")
+print(f"Final Total Entries   : {total_entries}")
+print(f"  - Young Entries     : {young_entries}")
+print(f"  - Old/Adult Entries : {old_entries}")
 print("====================================\n")
