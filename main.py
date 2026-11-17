@@ -10,7 +10,7 @@ from age_classifier import AgeClassifier  # Imported our new modular age classif
 # ==========================================
 # CONFIGURATION
 # ==========================================
-VIDEO_PATH = "videos/entrance03.avi"   # Path to the input CCTV video file
+VIDEO_PATH = "videos/entrance.mp4"   # Path to the input CCTV video file
 MODEL_PATH = "yolo11n.pt"
 TRACKER_CONFIG = "custom_botsort.yaml"
 CALIBRATION_DB = "calibrations.json"
